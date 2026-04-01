@@ -24,17 +24,19 @@ case "$OS/$ARCH" in
   *)             die "Unsupported platform: $OS/$ARCH. See https://github.com/$REPO for supported platforms." ;;
 esac
 
-# Resolve download URL from latest release
+# Resolve latest release tag, then build download URL directly
 LATEST_URL="https://api.github.com/repos/${REPO}/releases/latest"
 if command -v curl >/dev/null 2>&1; then
-  DOWNLOAD_URL="$(curl -fsSL "$LATEST_URL" | grep '"browser_download_url"' | grep "${ASSET}" | head -1 | sed 's/.*"browser_download_url": "\(.*\)".*/\1/')"
+  TAG="$(curl -fsSL "$LATEST_URL" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": "\(.*\)".*/\1/')"
 elif command -v wget >/dev/null 2>&1; then
-  DOWNLOAD_URL="$(wget -qO- "$LATEST_URL" | grep '"browser_download_url"' | grep "${ASSET}" | head -1 | sed 's/.*"browser_download_url": "\(.*\)".*/\1/')"
+  TAG="$(wget -qO- "$LATEST_URL" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": "\(.*\)".*/\1/')"
 else
   die "curl or wget is required"
 fi
 
-[ -z "$DOWNLOAD_URL" ] && die "Could not resolve download URL for $ASSET. Check https://github.com/$REPO/releases"
+[ -z "$TAG" ] && die "Could not determine latest release tag. Check https://github.com/$REPO/releases"
+
+DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET}"
 
 TMPFILE="$(mktemp)"
 trap 'rm -f "$TMPFILE"' EXIT
