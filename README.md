@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/RamboRogers/cyber-memory/master/media/banner.png" alt="cyber-memory" width="100%">
+<img src="https://raw.githubusercontent.com/RamboRogers/cyber-memory/master/media/banner.jpeg" alt="cyber-memory" width="100%">
 
 <div align="center">
 
