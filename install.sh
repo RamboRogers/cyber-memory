@@ -27,9 +27,9 @@ esac
 # Resolve download URL from latest release
 LATEST_URL="https://api.github.com/repos/${REPO}/releases/latest"
 if command -v curl >/dev/null 2>&1; then
-  DOWNLOAD_URL="$(curl -fsSL "$LATEST_URL" | grep '"browser_download_url"' | grep "\"${ASSET}\"" | head -1 | sed 's/.*"browser_download_url": "\(.*\)".*/\1/')"
+  DOWNLOAD_URL="$(curl -fsSL "$LATEST_URL" | grep '"browser_download_url"' | grep "${ASSET}" | head -1 | sed 's/.*"browser_download_url": "\(.*\)".*/\1/')"
 elif command -v wget >/dev/null 2>&1; then
-  DOWNLOAD_URL="$(wget -qO- "$LATEST_URL" | grep '"browser_download_url"' | grep "\"${ASSET}\"" | head -1 | sed 's/.*"browser_download_url": "\(.*\)".*/\1/')"
+  DOWNLOAD_URL="$(wget -qO- "$LATEST_URL" | grep '"browser_download_url"' | grep "${ASSET}" | head -1 | sed 's/.*"browser_download_url": "\(.*\)".*/\1/')"
 else
   die "curl or wget is required"
 fi
