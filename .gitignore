@@ -8,6 +8,8 @@ assets/linux_amd64/
 assets/linux_arm64/
 assets/windows_amd64/
 
+# Windows is not yet supported (ortgenai dep requires dlfcn.h)
+
 # Model weights — downloaded at runtime, never committed
 **/models/
 *.onnx_data
