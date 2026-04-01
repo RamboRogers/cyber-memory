@@ -8,63 +8,31 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
-  build:
-    name: Build ${{ matrix.os }}-${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      matrix:
-        include:
-          - os: darwin
-            arch: arm64
-            runner: macos-14          # Apple Silicon
-            asset: cyber-memory-darwin-arm64
-
-          - os: darwin
-            arch: amd64
-            runner: macos-13          # Intel
-            asset: cyber-memory-darwin-amd64
-
-          - os: linux
-            arch: amd64
-            runner: ubuntu-22.04
-            asset: cyber-memory-linux-amd64
-
-          - os: linux
-            arch: arm64
-            runner: ubuntu-22.04-arm  # GitHub's native arm64 runner
-            asset: cyber-memory-linux-arm64
-
-          - os: windows
-            arch: amd64
-            runner: windows-2022
-            asset: cyber-memory-windows-amd64.exe
-
+  # ── macOS arm64 (native) ─────────────────────────────────────────────────────
+  build-darwin-arm64:
+    name: Build darwin-arm64
+    runs-on: macos-14
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Rust (for libtokenizers)
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache libtokenizers
-        id: cache-tokenizers
+      - name: Cache libtokenizers (darwin-arm64)
+        id: cache-tok
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.local/lib/libtokenizers.a
-            C:\tokenizers\libtokenizers.a
-          key: tokenizers-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles('go.sum') }}
+          path: ~/.local/lib/libtokenizers.a
+          key: tokenizers-darwin-arm64-${{ hashFiles('go.sum') }}
 
-      - name: Build libtokenizers (Unix)
-        if: steps.cache-tokenizers.outputs.cache-hit != 'true' && matrix.os != 'windows'
-        shell: bash
+      - name: Build libtokenizers (darwin-arm64)
+        if: steps.cache-tok.outputs.cache-hit != 'true'
         run: |
           TMPDIR=$(mktemp -d)
           git clone --depth 1 https://github.com/daulet/tokenizers.git "$TMPDIR"
@@ -73,20 +41,7 @@ jobs:
           mkdir -p ~/.local/lib
           cp target/release/libtokenizers_ffi.a ~/.local/lib/libtokenizers.a
 
-      - name: Build libtokenizers (Windows)
-        if: steps.cache-tokenizers.outputs.cache-hit != 'true' && matrix.os == 'windows'
-        shell: pwsh
-        run: |
-          $tmp = New-TemporaryFile | %{ $_.DirectoryName + "\" + [System.IO.Path]::GetRandomFileName() }
-          git clone --depth 1 https://github.com/daulet/tokenizers.git $tmp
-          Push-Location $tmp
-          cargo build --release
-          New-Item -ItemType Directory -Force -Path C:\tokenizers
-          Copy-Item target\release\tokenizers_ffi.lib C:\tokenizers\libtokenizers.a
-          Pop-Location
-
-      - name: Download ORT (macOS arm64)
-        if: matrix.os == 'darwin' && matrix.arch == 'arm64'
+      - name: Download ORT (darwin-arm64)
         run: |
           curl -fsSL -o /tmp/ort.tgz \
             https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-osx-arm64-1.24.4.tgz
@@ -94,8 +49,53 @@ jobs:
           mkdir -p assets/darwin_arm64
           cp /tmp/onnxruntime-osx-arm64-1.24.4/lib/libonnxruntime.dylib assets/darwin_arm64/
 
-      - name: Download ORT (macOS amd64)
-        if: matrix.os == 'darwin' && matrix.arch == 'amd64'
+      - name: Build
+        env:
+          CGO_ENABLED: "1"
+          CGO_LDFLAGS: "-L$HOME/.local/lib -ltokenizers"
+        run: |
+          go build -tags ORT \
+            -ldflags "-X main.version=${{ github.ref_name }}" \
+            -o cyber-memory-darwin-arm64 .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyber-memory-darwin-arm64
+          path: cyber-memory-darwin-arm64
+          if-no-files-found: error
+
+  # ── macOS amd64 (cross-compile from arm64 runner) ───────────────────────────
+  build-darwin-amd64:
+    name: Build darwin-amd64
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Cache libtokenizers (darwin-amd64)
+        id: cache-tok
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/lib/libtokenizers-x86_64.a
+          key: tokenizers-darwin-amd64-${{ hashFiles('go.sum') }}
+
+      - name: Build libtokenizers (x86_64-apple-darwin)
+        if: steps.cache-tok.outputs.cache-hit != 'true'
+        run: |
+          TMPDIR=$(mktemp -d)
+          git clone --depth 1 https://github.com/daulet/tokenizers.git "$TMPDIR"
+          cd "$TMPDIR"
+          cargo build --release --target x86_64-apple-darwin
+          mkdir -p ~/.local/lib
+          cp target/x86_64-apple-darwin/release/libtokenizers_ffi.a ~/.local/lib/libtokenizers-x86_64.a
+
+      - name: Download ORT (darwin-amd64)
         run: |
           curl -fsSL -o /tmp/ort.tgz \
             https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-osx-x86_64-1.24.4.tgz
@@ -103,8 +103,54 @@ jobs:
           mkdir -p assets/darwin_amd64
           cp /tmp/onnxruntime-osx-x86_64-1.24.4/lib/libonnxruntime.dylib assets/darwin_amd64/
 
-      - name: Download ORT (Linux amd64)
-        if: matrix.os == 'linux' && matrix.arch == 'amd64'
+      - name: Build
+        env:
+          CGO_ENABLED: "1"
+          GOOS: darwin
+          GOARCH: amd64
+          CGO_LDFLAGS: "-L$HOME/.local/lib -ltokenizers-x86_64"
+          CC: "cc -arch x86_64"
+        run: |
+          go build -tags ORT \
+            -ldflags "-X main.version=${{ github.ref_name }}" \
+            -o cyber-memory-darwin-amd64 .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyber-memory-darwin-amd64
+          path: cyber-memory-darwin-amd64
+          if-no-files-found: error
+
+  # ── Linux amd64 (native) ─────────────────────────────────────────────────────
+  build-linux-amd64:
+    name: Build linux-amd64
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache libtokenizers (linux-amd64)
+        id: cache-tok
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/lib/libtokenizers.a
+          key: tokenizers-linux-amd64-${{ hashFiles('go.sum') }}
+
+      - name: Build libtokenizers (linux-amd64)
+        if: steps.cache-tok.outputs.cache-hit != 'true'
+        run: |
+          TMPDIR=$(mktemp -d)
+          git clone --depth 1 https://github.com/daulet/tokenizers.git "$TMPDIR"
+          cd "$TMPDIR"
+          cargo build --release
+          mkdir -p ~/.local/lib
+          cp target/release/libtokenizers_ffi.a ~/.local/lib/libtokenizers.a
+
+      - name: Download ORT (linux-amd64)
         run: |
           curl -fsSL -o /tmp/ort.tgz \
             https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-x64-1.24.4.tgz
@@ -112,8 +158,66 @@ jobs:
           mkdir -p assets/linux_amd64
           cp /tmp/onnxruntime-linux-x64-1.24.4/lib/libonnxruntime.so.1.24.4 assets/linux_amd64/libonnxruntime.so
 
-      - name: Download ORT (Linux arm64)
-        if: matrix.os == 'linux' && matrix.arch == 'arm64'
+      - name: Build
+        env:
+          CGO_ENABLED: "1"
+          CGO_LDFLAGS: "-L$HOME/.local/lib -ltokenizers -ldl -lm -lstdc++"
+        run: |
+          go build -tags ORT \
+            -ldflags "-X main.version=${{ github.ref_name }}" \
+            -o cyber-memory-linux-amd64 .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyber-memory-linux-amd64
+          path: cyber-memory-linux-amd64
+          if-no-files-found: error
+
+  # ── Linux arm64 (cross-compile from amd64) ───────────────────────────────────
+  build-linux-arm64:
+    name: Build linux-arm64
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Install cross-compile toolchain
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: Configure Cargo for cross-compile
+        run: |
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml <<'EOF'
+          [target.aarch64-unknown-linux-gnu]
+          linker = "aarch64-linux-gnu-gcc"
+          EOF
+
+      - name: Cache libtokenizers (linux-arm64)
+        id: cache-tok
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/lib/libtokenizers-aarch64.a
+          key: tokenizers-linux-arm64-${{ hashFiles('go.sum') }}
+
+      - name: Build libtokenizers (aarch64-unknown-linux-gnu)
+        if: steps.cache-tok.outputs.cache-hit != 'true'
+        run: |
+          TMPDIR=$(mktemp -d)
+          git clone --depth 1 https://github.com/daulet/tokenizers.git "$TMPDIR"
+          cd "$TMPDIR"
+          cargo build --release --target aarch64-unknown-linux-gnu
+          mkdir -p ~/.local/lib
+          cp target/aarch64-unknown-linux-gnu/release/libtokenizers_ffi.a ~/.local/lib/libtokenizers-aarch64.a
+
+      - name: Download ORT (linux-arm64)
         run: |
           curl -fsSL -o /tmp/ort.tgz \
             https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-aarch64-1.24.4.tgz
@@ -121,52 +225,109 @@ jobs:
           mkdir -p assets/linux_arm64
           cp /tmp/onnxruntime-linux-aarch64-1.24.4/lib/libonnxruntime.so.1.24.4 assets/linux_arm64/libonnxruntime.so
 
-      - name: Download ORT (Windows amd64)
-        if: matrix.os == 'windows'
-        shell: pwsh
-        run: |
-          Invoke-WebRequest -Uri "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-win-x64-1.24.4.zip" -OutFile "$env:TEMP\ort.zip"
-          Expand-Archive "$env:TEMP\ort.zip" -DestinationPath "$env:TEMP\ort"
-          New-Item -ItemType Directory -Force -Path assets\windows_amd64
-          Copy-Item "$env:TEMP\ort\onnxruntime-win-x64-1.24.4\lib\onnxruntime.dll" assets\windows_amd64\
-
-      - name: Build (Unix)
-        if: matrix.os != 'windows'
+      - name: Build
         env:
           CGO_ENABLED: "1"
-          GOARCH: ${{ matrix.arch }}
-          GOOS: ${{ matrix.os }}
+          GOOS: linux
+          GOARCH: arm64
+          CC: aarch64-linux-gnu-gcc
+          CXX: aarch64-linux-gnu-g++
+          CGO_LDFLAGS: "-L$HOME/.local/lib -ltokenizers-aarch64 -ldl -lm -lstdc++"
         run: |
-          CGO_LDFLAGS="-L$HOME/.local/lib -ltokenizers" \
           go build -tags ORT \
             -ldflags "-X main.version=${{ github.ref_name }}" \
-            -o ${{ matrix.asset }} .
+            -o cyber-memory-linux-arm64 .
 
-      - name: Build (Windows)
-        if: matrix.os == 'windows'
-        shell: pwsh
-        env:
-          CGO_ENABLED: "1"
-        run: |
-          $env:CGO_LDFLAGS = "-LC:\tokenizers -ltokenizers"
-          go build -tags ORT `
-            -ldflags "-X main.version=${{ github.ref_name }}" `
-            -o ${{ matrix.asset }} .
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset }}
-          path: ${{ matrix.asset }}
+          name: cyber-memory-linux-arm64
+          path: cyber-memory-linux-arm64
           if-no-files-found: error
 
+  # ── Windows amd64 (cross-compile via mingw-w64 from Linux) ──────────────────
+  build-windows-amd64:
+    name: Build windows-amd64
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - name: Install mingw-w64
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y mingw-w64
+
+      - name: Configure Cargo for windows-gnu cross-compile
+        run: |
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml <<'EOF'
+          [target.x86_64-pc-windows-gnu]
+          linker = "x86_64-w64-mingw32-gcc"
+          ar = "x86_64-w64-mingw32-ar"
+          EOF
+
+      - name: Cache libtokenizers (windows-amd64)
+        id: cache-tok
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/lib/libtokenizers-win64.a
+          key: tokenizers-windows-amd64-${{ hashFiles('go.sum') }}
+
+      - name: Build libtokenizers (x86_64-pc-windows-gnu)
+        if: steps.cache-tok.outputs.cache-hit != 'true'
+        run: |
+          TMPDIR=$(mktemp -d)
+          git clone --depth 1 https://github.com/daulet/tokenizers.git "$TMPDIR"
+          cd "$TMPDIR"
+          cargo build --release --target x86_64-pc-windows-gnu
+          mkdir -p ~/.local/lib
+          cp target/x86_64-pc-windows-gnu/release/libtokenizers_ffi.a ~/.local/lib/libtokenizers-win64.a
+
+      - name: Download ORT (windows-amd64)
+        run: |
+          curl -fsSL -o /tmp/ort.zip \
+            https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-win-x64-1.24.4.zip
+          unzip -q /tmp/ort.zip -d /tmp/ort
+          mkdir -p assets/windows_amd64
+          cp /tmp/ort/onnxruntime-win-x64-1.24.4/lib/onnxruntime.dll assets/windows_amd64/
+
+      - name: Build
+        env:
+          CGO_ENABLED: "1"
+          GOOS: windows
+          GOARCH: amd64
+          CC: x86_64-w64-mingw32-gcc
+          CXX: x86_64-w64-mingw32-g++
+          CGO_LDFLAGS: "-L$HOME/.local/lib -ltokenizers-win64 -lm -lstdc++ -static-libgcc -static-libstdc++"
+        run: |
+          go build -tags ORT \
+            -ldflags "-X main.version=${{ github.ref_name }}" \
+            -o cyber-memory-windows-amd64.exe .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyber-memory-windows-amd64.exe
+          path: cyber-memory-windows-amd64.exe
+          if-no-files-found: error
+
+  # ── GitHub Release ────────────────────────────────────────────────────────────
   release:
     name: Create Release
-    needs: build
+    needs:
+      - build-darwin-arm64
+      - build-darwin-amd64
+      - build-linux-amd64
+      - build-linux-arm64
+      - build-windows-amd64
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
