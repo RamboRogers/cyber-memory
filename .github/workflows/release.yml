@@ -1,0 +1,194 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - os: darwin
+            arch: arm64
+            runner: macos-14          # Apple Silicon
+            asset: cyber-memory-darwin-arm64
+
+          - os: darwin
+            arch: amd64
+            runner: macos-13          # Intel
+            asset: cyber-memory-darwin-amd64
+
+          - os: linux
+            arch: amd64
+            runner: ubuntu-22.04
+            asset: cyber-memory-linux-amd64
+
+          - os: linux
+            arch: arm64
+            runner: ubuntu-22.04-arm  # GitHub's native arm64 runner
+            asset: cyber-memory-linux-arm64
+
+          - os: windows
+            arch: amd64
+            runner: windows-2022
+            asset: cyber-memory-windows-amd64.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Rust (for libtokenizers)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache libtokenizers
+        id: cache-tokenizers
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/lib/libtokenizers.a
+            C:\tokenizers\libtokenizers.a
+          key: tokenizers-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles('go.sum') }}
+
+      - name: Build libtokenizers (Unix)
+        if: steps.cache-tokenizers.outputs.cache-hit != 'true' && matrix.os != 'windows'
+        shell: bash
+        run: |
+          TMPDIR=$(mktemp -d)
+          git clone --depth 1 https://github.com/daulet/tokenizers.git "$TMPDIR"
+          cd "$TMPDIR"
+          cargo build --release
+          mkdir -p ~/.local/lib
+          cp target/release/libtokenizers_ffi.a ~/.local/lib/libtokenizers.a
+
+      - name: Build libtokenizers (Windows)
+        if: steps.cache-tokenizers.outputs.cache-hit != 'true' && matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $tmp = New-TemporaryFile | %{ $_.DirectoryName + "\" + [System.IO.Path]::GetRandomFileName() }
+          git clone --depth 1 https://github.com/daulet/tokenizers.git $tmp
+          Push-Location $tmp
+          cargo build --release
+          New-Item -ItemType Directory -Force -Path C:\tokenizers
+          Copy-Item target\release\tokenizers_ffi.lib C:\tokenizers\libtokenizers.a
+          Pop-Location
+
+      - name: Download ORT (macOS arm64)
+        if: matrix.os == 'darwin' && matrix.arch == 'arm64'
+        run: |
+          curl -fsSL -o /tmp/ort.tgz \
+            https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-osx-arm64-1.24.4.tgz
+          tar xf /tmp/ort.tgz -C /tmp
+          mkdir -p assets/darwin_arm64
+          cp /tmp/onnxruntime-osx-arm64-1.24.4/lib/libonnxruntime.dylib assets/darwin_arm64/
+
+      - name: Download ORT (macOS amd64)
+        if: matrix.os == 'darwin' && matrix.arch == 'amd64'
+        run: |
+          curl -fsSL -o /tmp/ort.tgz \
+            https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-osx-x86_64-1.24.4.tgz
+          tar xf /tmp/ort.tgz -C /tmp
+          mkdir -p assets/darwin_amd64
+          cp /tmp/onnxruntime-osx-x86_64-1.24.4/lib/libonnxruntime.dylib assets/darwin_amd64/
+
+      - name: Download ORT (Linux amd64)
+        if: matrix.os == 'linux' && matrix.arch == 'amd64'
+        run: |
+          curl -fsSL -o /tmp/ort.tgz \
+            https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-x64-1.24.4.tgz
+          tar xf /tmp/ort.tgz -C /tmp
+          mkdir -p assets/linux_amd64
+          cp /tmp/onnxruntime-linux-x64-1.24.4/lib/libonnxruntime.so.1.24.4 assets/linux_amd64/libonnxruntime.so
+
+      - name: Download ORT (Linux arm64)
+        if: matrix.os == 'linux' && matrix.arch == 'arm64'
+        run: |
+          curl -fsSL -o /tmp/ort.tgz \
+            https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-aarch64-1.24.4.tgz
+          tar xf /tmp/ort.tgz -C /tmp
+          mkdir -p assets/linux_arm64
+          cp /tmp/onnxruntime-linux-aarch64-1.24.4/lib/libonnxruntime.so.1.24.4 assets/linux_arm64/libonnxruntime.so
+
+      - name: Download ORT (Windows amd64)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-win-x64-1.24.4.zip" -OutFile "$env:TEMP\ort.zip"
+          Expand-Archive "$env:TEMP\ort.zip" -DestinationPath "$env:TEMP\ort"
+          New-Item -ItemType Directory -Force -Path assets\windows_amd64
+          Copy-Item "$env:TEMP\ort\onnxruntime-win-x64-1.24.4\lib\onnxruntime.dll" assets\windows_amd64\
+
+      - name: Build (Unix)
+        if: matrix.os != 'windows'
+        env:
+          CGO_ENABLED: "1"
+          GOARCH: ${{ matrix.arch }}
+          GOOS: ${{ matrix.os }}
+        run: |
+          CGO_LDFLAGS="-L$HOME/.local/lib -ltokenizers" \
+          go build -tags ORT \
+            -ldflags "-X main.version=${{ github.ref_name }}" \
+            -o ${{ matrix.asset }} .
+
+      - name: Build (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          $env:CGO_LDFLAGS = "-LC:\tokenizers -ltokenizers"
+          go build -tags ORT `
+            -ldflags "-X main.version=${{ github.ref_name }}" `
+            -o ${{ matrix.asset }} .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum * > checksums.txt && cat checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: |
+            dist/cyber-memory-darwin-arm64
+            dist/cyber-memory-darwin-amd64
+            dist/cyber-memory-linux-amd64
+            dist/cyber-memory-linux-arm64
+            dist/cyber-memory-windows-amd64.exe
+            dist/checksums.txt

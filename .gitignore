@@ -1,0 +1,18 @@
+cyber-memory
+cyber-memory.exe
+
+# ORT platform libraries — downloaded by CI, not committed
+# The darwin/arm64 one IS committed (your dev machine)
+assets/darwin_amd64/
+assets/linux_amd64/
+assets/linux_arm64/
+assets/windows_amd64/
+
+# Model weights — downloaded at runtime, never committed
+**/models/
+*.onnx_data
+
+# SQLite runtime files
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
