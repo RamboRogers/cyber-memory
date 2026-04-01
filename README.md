@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/github/license/RamboRogers/cyber-memory?style=flat-square&color=00ff41)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat-square)](https://golang.org)
 [![MCP](https://img.shields.io/badge/MCP-STDIO-00ff41?style=flat-square)](https://modelcontextprotocol.io)
-[![Platform](https://img.shields.io/badge/platform-darwin%20%7C%20linux%20%7C%20windows-00ff41?style=flat-square)](#installation)
+[![Platform](https://img.shields.io/badge/platform-darwin%20arm64%20%7C%20linux%20amd64-00ff41?style=flat-square)](#installation)
 
 *Drop-in MCP memory server. No configuration. No dependencies. No cloud. Just copy and run.*
 
@@ -37,29 +37,31 @@ Your Agent ──STDIO/JSON-RPC──► cyber-memory ──► SQLite DB
 
 ## Installation
 
-### One-liner (macOS / Linux / Windows)
+### One-liner (macOS Apple Silicon / Linux x86-64)
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/RamboRogers/cyber-memory/master/install.sh | sh
 ```
 
-The installer detects your OS and architecture, downloads the correct binary to `/usr/local/bin` (or `%LOCALAPPDATA%\cyber-memory` on Windows), and prints your MCP config snippet.
+The installer detects your OS and architecture, downloads the correct binary to `/usr/local/bin`, and prints your MCP config snippet.
 
-### Manual download
+### Supported platforms
 
 | Platform | Architecture | Binary |
 |---|---|---|
 | macOS | Apple Silicon (arm64) | [cyber-memory-darwin-arm64](https://github.com/RamboRogers/cyber-memory/releases/latest/download/cyber-memory-darwin-arm64) |
-| macOS | Intel (amd64) | [cyber-memory-darwin-amd64](https://github.com/RamboRogers/cyber-memory/releases/latest/download/cyber-memory-darwin-amd64) |
 | Linux | x86-64 | [cyber-memory-linux-amd64](https://github.com/RamboRogers/cyber-memory/releases/latest/download/cyber-memory-linux-amd64) |
-| Linux | arm64 | [cyber-memory-linux-arm64](https://github.com/RamboRogers/cyber-memory/releases/latest/download/cyber-memory-linux-arm64) |
-| Windows | x86-64 | [cyber-memory-windows-amd64.exe](https://github.com/RamboRogers/cyber-memory/releases/latest/download/cyber-memory-windows-amd64.exe) |
+
+> **macOS Intel, Linux arm64, and Windows** are not yet supported. The embedding dependency (`ortgenai`) has POSIX-only C headers that block Windows cross-compilation, Intel Mac ORT builds were dropped by Microsoft after v1.23.2, and Linux arm64 cross-compilation needs further work. PRs welcome.
 
 ```sh
-# macOS / Linux example
-chmod +x cyber-memory-darwin-arm64
-mv cyber-memory-darwin-arm64 /usr/local/bin/cyber-memory
-cyber-memory --version
+# macOS Apple Silicon
+curl -fsSL https://github.com/RamboRogers/cyber-memory/releases/latest/download/cyber-memory-darwin-arm64 -o cyber-memory
+chmod +x cyber-memory && sudo mv cyber-memory /usr/local/bin/
+
+# Linux x86-64
+curl -fsSL https://github.com/RamboRogers/cyber-memory/releases/latest/download/cyber-memory-linux-amd64 -o cyber-memory
+chmod +x cyber-memory && sudo mv cyber-memory /usr/local/bin/
 ```
 
 ---

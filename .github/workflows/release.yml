@@ -11,12 +11,16 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-# Windows is not supported: ortgenai (hugot transitive dep) requires dlfcn.h
-# which does not exist in any Windows C toolchain (MSVC or mingw).
-# Platforms: darwin/arm64, darwin/amd64, linux/amd64, linux/arm64
+# Supported build targets:
+#   darwin/arm64  — native macos-14 runner
+#   linux/amd64   — native ubuntu-22.04 runner
+#
+# Not yet supported:
+#   darwin/amd64  — ORT dropped Intel Mac builds after v1.23.2; cross-compile linker issues
+#   linux/arm64   — cross-compile libtokenizers issues with aarch64-linux-gnu toolchain
+#   windows       — ortgenai dep requires dlfcn.h (POSIX-only, no Windows equivalent)
 
 jobs:
-  # ── macOS arm64 (native) ─────────────────────────────────────────────────────
   build-darwin-arm64:
     name: Build darwin-arm64
     runs-on: macos-14
@@ -67,63 +71,6 @@ jobs:
           path: cyber-memory-darwin-arm64
           if-no-files-found: error
 
-  # ── macOS amd64 (cross-compile from arm64, ORT universal2 v1.23.2) ──────────
-  build-darwin-amd64:
-    name: Build darwin-amd64
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin
-
-      - name: Cache libtokenizers (x86_64)
-        id: cache-tok
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/lib/libtokenizers-x86_64.a
-          key: tokenizers-darwin-amd64-${{ hashFiles('go.sum') }}
-
-      - name: Build libtokenizers (x86_64-apple-darwin)
-        if: steps.cache-tok.outputs.cache-hit != 'true'
-        run: |
-          TMPDIR=$(mktemp -d)
-          git clone --depth 1 https://github.com/daulet/tokenizers.git "$TMPDIR"
-          cd "$TMPDIR"
-          cargo build --release --target x86_64-apple-darwin
-          mkdir -p ~/.local/lib
-          cp target/x86_64-apple-darwin/release/libtokenizers_ffi.a ~/.local/lib/libtokenizers-x86_64.a
-
-      - name: Fetch ORT (universal2 — last release with x86_64 support)
-        run: |
-          curl -fsSL -o /tmp/ort.tgz \
-            https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-osx-universal2-1.23.2.tgz
-          tar xf /tmp/ort.tgz -C /tmp
-          mkdir -p assets/darwin_amd64
-          cp /tmp/onnxruntime-osx-universal2-1.23.2/lib/libonnxruntime.dylib assets/darwin_amd64/
-
-      - name: Build
-        run: |
-          export CGO_ENABLED=1
-          export GOOS=darwin
-          export GOARCH=amd64
-          export CC="cc -arch x86_64"
-          export CGO_LDFLAGS="-L$HOME/.local/lib -ltokenizers-x86_64 -arch x86_64"
-          go build -tags ORT \
-            -ldflags "-X main.version=${{ github.ref_name }}" \
-            -o cyber-memory-darwin-amd64 .
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cyber-memory-darwin-amd64
-          path: cyber-memory-darwin-amd64
-          if-no-files-found: error
-
-  # ── Linux amd64 (native) ─────────────────────────────────────────────────────
   build-linux-amd64:
     name: Build linux-amd64
     runs-on: ubuntu-22.04
@@ -174,84 +121,11 @@ jobs:
           path: cyber-memory-linux-amd64
           if-no-files-found: error
 
-  # ── Linux arm64 (cross-compile from amd64) ───────────────────────────────────
-  build-linux-arm64:
-    name: Build linux-arm64
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-unknown-linux-gnu
-
-      - name: Install cross-compile toolchain
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-
-      - name: Configure Cargo linker for aarch64
-        run: |
-          mkdir -p ~/.cargo
-          cat >> ~/.cargo/config.toml <<'EOF'
-          [target.aarch64-unknown-linux-gnu]
-          linker = "aarch64-linux-gnu-gcc"
-          EOF
-
-      - name: Cache libtokenizers (aarch64)
-        id: cache-tok
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/lib/libtokenizers-aarch64.a
-          key: tokenizers-linux-arm64-${{ hashFiles('go.sum') }}
-
-      - name: Build libtokenizers (aarch64-unknown-linux-gnu)
-        if: steps.cache-tok.outputs.cache-hit != 'true'
-        run: |
-          TMPDIR=$(mktemp -d)
-          git clone --depth 1 https://github.com/daulet/tokenizers.git "$TMPDIR"
-          cd "$TMPDIR"
-          cargo build --release --target aarch64-unknown-linux-gnu
-          mkdir -p ~/.local/lib
-          cp target/aarch64-unknown-linux-gnu/release/libtokenizers_ffi.a ~/.local/lib/libtokenizers-aarch64.a
-
-      - name: Fetch ORT (linux-aarch64)
-        run: |
-          curl -fsSL -o /tmp/ort.tgz \
-            https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-aarch64-1.24.4.tgz
-          tar xf /tmp/ort.tgz -C /tmp
-          mkdir -p assets/linux_arm64
-          cp /tmp/onnxruntime-linux-aarch64-1.24.4/lib/libonnxruntime.so.1.24.4 assets/linux_arm64/libonnxruntime.so
-
-      - name: Build
-        run: |
-          export CGO_ENABLED=1
-          export GOOS=linux
-          export GOARCH=arm64
-          export CC=aarch64-linux-gnu-gcc
-          export CXX=aarch64-linux-gnu-g++
-          export CGO_LDFLAGS="-L$HOME/.local/lib -ltokenizers-aarch64 -ldl -lm -lstdc++"
-          go build -tags ORT \
-            -ldflags "-X main.version=${{ github.ref_name }}" \
-            -o cyber-memory-linux-arm64 .
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cyber-memory-linux-arm64
-          path: cyber-memory-linux-arm64
-          if-no-files-found: error
-
-  # ── GitHub Release ────────────────────────────────────────────────────────────
   release:
     name: Create Release
     needs:
       - build-darwin-arm64
-      - build-darwin-amd64
       - build-linux-amd64
-      - build-linux-arm64
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -275,7 +149,5 @@ jobs:
           generate_release_notes: true
           files: |
             dist/cyber-memory-darwin-arm64
-            dist/cyber-memory-darwin-amd64
             dist/cyber-memory-linux-amd64
-            dist/cyber-memory-linux-arm64
             dist/checksums.txt
