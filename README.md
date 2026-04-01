@@ -68,7 +68,7 @@ chmod +x cyber-memory && sudo mv cyber-memory /usr/local/bin/
 
 ## MCP Configuration
 
-Add to your `claude_desktop_config.json` (or equivalent MCP host config):
+### Claude Desktop / OpenClaw (`claude_desktop_config.json`)
 
 ```json
 {
@@ -80,9 +80,21 @@ Add to your `claude_desktop_config.json` (or equivalent MCP host config):
 }
 ```
 
-That's it. No API keys. No ports. No environment variables required.
+### Hermes (`config.yaml`)
 
-On first use the agent will trigger a ~300 MB model download (EmbeddingGemma-300m) to `~/.local/share/cyber-memory/`. Every subsequent start is instant.
+```yaml
+mcp_servers:
+  cyber-memory:
+    command: /usr/local/bin/cyber-memory
+    args: []
+    env: {}
+    timeout: 120
+    connect_timeout: 60
+```
+
+No API keys. No ports. No environment variables required.
+
+> On first use the agent will trigger a ~300 MB model download (EmbeddingGemma-300m) to `~/.local/share/cyber-memory/`. Every subsequent start is instant.
 
 ---
 
