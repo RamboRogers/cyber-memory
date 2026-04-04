@@ -1,6 +1,6 @@
 cyber-memory
 cyber-memory.exe
-
+.omx
 # ORT platform libraries — downloaded by CI, not committed
 # The darwin/arm64 one IS committed (your dev machine)
 assets/darwin_amd64/

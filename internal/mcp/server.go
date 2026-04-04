@@ -62,7 +62,7 @@ func (s *Server) registerTools() {
 		mcpgo.WithString("kind", mcpgo.Description("episodic | semantic | procedural (default: episodic)")),
 		mcpgo.WithString("source", mcpgo.Description("Origin label, e.g. 'user', 'tool:bash' (default: agent)")),
 		mcpgo.WithNumber("importance", mcpgo.Description("0.0–5.0 weight (default: 1.0)")),
-		mcpgo.WithArray("tags", mcpgo.Description("Optional string labels.")),
+		mcpgo.WithArray("tags", mcpgo.Description("Optional string labels."), mcpgo.WithStringItems()),
 	), s.handleStore)
 
 	s.mcp.AddTool(mcpgo.NewTool("memory_recall",
@@ -70,7 +70,7 @@ func (s *Server) registerTools() {
 		mcpgo.WithString("query", mcpgo.Required(), mcpgo.Description("Natural language query.")),
 		mcpgo.WithNumber("limit", mcpgo.Description("Max results (default: 10)")),
 		mcpgo.WithString("kind", mcpgo.Description("episodic | semantic | procedural | any (default: any)")),
-		mcpgo.WithArray("tags", mcpgo.Description("Filter to memories with at least one of these tags.")),
+		mcpgo.WithArray("tags", mcpgo.Description("Filter to memories with at least one of these tags."), mcpgo.WithStringItems()),
 		mcpgo.WithNumber("min_score", mcpgo.Description("Minimum composite score threshold (default: 0)")),
 	), s.handleRecall)
 
@@ -78,7 +78,7 @@ func (s *Server) registerTools() {
 		mcpgo.WithDescription("Full-text keyword search (FTS5). Faster than vector recall, useful for exact terms."),
 		mcpgo.WithString("query", mcpgo.Required(), mcpgo.Description("FTS5 match expression.")),
 		mcpgo.WithNumber("limit", mcpgo.Description("Max results (default: 10)")),
-		mcpgo.WithArray("tags", mcpgo.Description("Filter to memories with at least one of these tags.")),
+		mcpgo.WithArray("tags", mcpgo.Description("Filter to memories with at least one of these tags."), mcpgo.WithStringItems()),
 	), s.handleSearch)
 
 	s.mcp.AddTool(mcpgo.NewTool("memory_relate",
@@ -101,7 +101,7 @@ func (s *Server) registerTools() {
 		mcpgo.WithString("content", mcpgo.Description("Replacement content (triggers re-embed).")),
 		mcpgo.WithString("summary", mcpgo.Description("Replacement summary.")),
 		mcpgo.WithNumber("importance", mcpgo.Description("New importance value.")),
-		mcpgo.WithArray("tags", mcpgo.Description("Replaces all existing tags.")),
+		mcpgo.WithArray("tags", mcpgo.Description("Replaces all existing tags."), mcpgo.WithStringItems()),
 	), s.handleUpdate)
 
 	s.mcp.AddTool(mcpgo.NewTool("memory_forget",
