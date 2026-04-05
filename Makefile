@@ -1,6 +1,6 @@
 BINARY     := cyber-memory
-VERSION    := 0.1.0
-LDFLAGS    := -X main.version=$(VERSION)
+VERSION    ?= $(shell git describe --tags --dirty --always 2>/dev/null || echo dev)
+LDFLAGS    := -X github.com/ramborogers/cyber-memory/internal/appinfo.Version='$(VERSION)'
 BUILD_TAGS := ORT
 
 # libtokenizers.a path — override via environment:
@@ -30,9 +30,9 @@ tokenizers:
 	  echo "Installed: $(TOKENIZERS_LIB)/libtokenizers.a" && \
 	  rm -rf $$TMPDIR
 
-## test: run tests (store + scorer packages, no ORT required)
+## test: run testable internal packages (no ORT runtime required)
 test:
-	go test ./internal/store/... ./internal/scorer/...
+	go test ./internal/...
 
 ## clean: remove the binary
 clean:

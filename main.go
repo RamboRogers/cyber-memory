@@ -27,12 +27,11 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/ramborogers/cyber-memory/internal/appinfo"
 	"github.com/ramborogers/cyber-memory/internal/embed"
 	mcpsrv "github.com/ramborogers/cyber-memory/internal/mcp"
 	"github.com/ramborogers/cyber-memory/internal/store"
 )
-
-const version = "0.1.0"
 
 func main() {
 	// ---- flags ----
@@ -44,12 +43,24 @@ func main() {
 		wipeFlag    = flag.Bool("wipe", false, "Drop all memories (requires --confirm)")
 		confirmFlag = flag.Bool("confirm", false, "Required for destructive operations")
 		statsFlag   = flag.Bool("stats", false, "Print database statistics and exit")
-		versionFlag = flag.Bool("version", false, "Print version and exit")
+		versionFlag = flag.Bool("version", false, "Print version and repo info and exit")
+		aboutFlag   = flag.Bool("about", false, "Print a refined build and repo summary and exit")
 	)
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Printf("cyber-memory %s (go%s %s/%s)\n", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+		fmt.Fprintln(
+			os.Stdout,
+			appinfo.FormatVersion(appinfo.CurrentVersion(), runtime.Version(), runtime.GOOS, runtime.GOARCH, appinfo.SupportsColor(os.Stdout)),
+		)
+		os.Exit(0)
+	}
+
+	if *aboutFlag {
+		fmt.Fprintln(
+			os.Stdout,
+			appinfo.FormatAbout(appinfo.CurrentVersion(), runtime.Version(), runtime.GOOS, runtime.GOARCH, appinfo.SupportsColor(os.Stdout)),
+		)
 		os.Exit(0)
 	}
 
@@ -116,12 +127,12 @@ func main() {
 	}
 	defer engine.Close()
 
-	srv := mcpsrv.New(st, engine, log)
+	srv := mcpsrv.New(st, engine, log, appinfo.CurrentVersion())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	log.Info("cyber-memory MCP server started", "version", version, "db", dbPath)
+	log.Info("cyber-memory MCP server started", "version", appinfo.CurrentVersion(), "repo", appinfo.RepoURL, "db", dbPath)
 	if err := srv.Serve(ctx); err != nil {
 		log.Error("serve", "err", err)
 		os.Exit(1)

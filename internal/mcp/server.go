@@ -31,11 +31,15 @@ type Server struct {
 }
 
 // New creates and configures the MCP server with all tools registered.
-func New(st *store.Store, emb Embedder, log *slog.Logger) *Server {
+func New(st *store.Store, emb Embedder, log *slog.Logger, version string) *Server {
+	if version == "" {
+		version = "dev"
+	}
+
 	s := &Server{
 		mcp: server.NewMCPServer(
 			"cyber-memory",
-			"1.0.0",
+			version,
 			server.WithToolCapabilities(true),
 		),
 		st:  st,

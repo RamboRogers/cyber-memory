@@ -62,7 +62,7 @@ jobs:
           export CGO_ENABLED=1
           export CGO_LDFLAGS="-L$HOME/.local/lib -ltokenizers"
           go build -tags ORT \
-            -ldflags "-X main.version=${{ github.ref_name }}" \
+            -ldflags "-X github.com/ramborogers/cyber-memory/internal/appinfo.Version='${{ github.ref_name }}'" \
             -o cyber-memory-darwin-arm64 .
 
       - uses: actions/upload-artifact@v4
@@ -112,7 +112,7 @@ jobs:
           export CGO_ENABLED=1
           export CGO_LDFLAGS="-L$HOME/.local/lib -ltokenizers -ldl -lm -lstdc++"
           go build -tags ORT \
-            -ldflags "-X main.version=${{ github.ref_name }}" \
+            -ldflags "-X github.com/ramborogers/cyber-memory/internal/appinfo.Version='${{ github.ref_name }}'" \
             -o cyber-memory-linux-amd64 .
 
       - uses: actions/upload-artifact@v4

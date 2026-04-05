@@ -223,12 +223,18 @@ cyber-memory --stats
 # Maintenance
 cyber-memory --purge-days 90         # delete unaccessed memories older than 90 days
 cyber-memory --wipe --confirm         # drop everything
+cyber-memory --version               # one-line version + repo output
+cyber-memory --about                 # refined build/runtime summary
 
 # Override database location
 cyber-memory --db /path/to/memory.db
 # or
 CYBER_MEMORY_DB=/path/to/memory.db cyber-memory
 ```
+
+`--version` stays compact and machine-friendly. `--about` is the richer human-facing output with build, runtime, and repo details.
+
+In MCP server mode, cyber-memory keeps `STDOUT` reserved for JSON-RPC. Human-facing banners live on explicit CLI flags instead of automatic startup output.
 
 ---
 
